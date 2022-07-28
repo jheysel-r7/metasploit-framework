@@ -203,25 +203,6 @@ class MetasploitModule < Msf::Auxiliary
       table << user
     end
 
-    # Currently the dump_table_fields method will always fail. I'm not sure there's a way to make it work due to the way
-    # comma's are handled in the back end. I've included the code in case I'm overlooking something:
-    # The vulnerable parameter "UID" is subject to the following character substitution:
-    #     static $xss_cleanup = [
-    #         '&quot;' => '&#38;',
-    #         '"' => '&quot;',
-    #         "'" => '&#039;',
-    #         '<' => '&lt;',
-    #         '>' => '&gt;',
-    #         '`' => '&#96;'
-    #
-    # Comma's in the vulnerable "UID" parameter get surrounded in quotes by the following vulnerable code:
-    #     if ($records) {
-    #         $records = explode(',', $records);
-    #         $records = "'" . implode("','", $records) . "'";
-    #
-    # Note backslashes do not get filtered out by $xss_cleanup which allows us to send: \,))+AND+#{payload};+--+
-    # The backslash escapes it's closing single quote, the comma then surrounds the ))+AND+#{payload};+--+ in quotes,
-    # the opening quote then closes the previous quote and we are then able to injection SQL code with limited characters.
     if table.rows.empty?
       print_bad("The dump_tables_fields method was unsuccessful")
     else
