@@ -5,7 +5,7 @@ hashes from the SuiteCRM database.
 
 ## Vulnerable Application
 
-SuiteCRM 7.12.5
+[SuiteCRM 7.12.5](https://github.com/salesagility/SuiteCRM/releases/tag/v7.12.5)
 
 ## Verification Steps
 
