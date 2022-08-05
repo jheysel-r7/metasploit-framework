@@ -161,7 +161,7 @@ class MetasploitModule < Msf::Auxiliary
       end
       output_length
     end
-
+    
     def sqli.blind_dump_data(query, length, known_bits=0, bits_to_guess=8, timebased=false)
       charset = 32.upto(126).to_a + 32.times.to_a + 127.upto(255).to_a
 
