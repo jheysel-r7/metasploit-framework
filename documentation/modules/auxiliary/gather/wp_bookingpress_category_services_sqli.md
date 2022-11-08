@@ -81,7 +81,7 @@ Select `Browse...` and browse to the `bookingpress-appointment-booking.1.0.10.zi
 
 You should see the following output in the browser:
 ```
-Istalling Plugin from uploaded file: bookingpress-appointment-booking.1.0.10.zip
+Installing Plugin from uploaded file: bookingpress-appointment-booking.1.0.10.zip
 
 Unpacking the package…
 
@@ -110,9 +110,10 @@ The webpage that bookingPress is running on. Example: `/bookingpress/`
 ## Verification Steps
 
 1. Start msfconsole
-1. Do: ``option
-1. Set the options
+1. Do: `use gather/wp_bookingpress_category_services_sqli`
+1. Set the options `RHOSTS` (you may also have to set `RPORT` and `BOOKING_PRESS_PAGE` depending on how the target is configured)
 1. Run the module
+1. Receive `Wordpress User Credentials` information displayed in a table
 
 ## Scenarios
 ### Booking Press 1.0.10, Wordpress Running Via Docksal, Ubuntu 20.04
