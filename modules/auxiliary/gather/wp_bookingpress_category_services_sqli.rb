@@ -25,7 +25,7 @@ class MetasploitModule < Msf::Auxiliary
         ],
         'References' => [
           [ 'URL', 'https://github.com/destr4ct/CVE-2022-0739'],
-          [ 'URL', 'https://wpscan.com/vulnerability/388cd42d-b61a-42a4-8604-99b812db2357'],
+          [ 'WPVDB', '388cd42d-b61a-42a4-8604-99b812db2357'],
           [ 'CVE', '2022-0739']
         ],
         'License' => MSF_LICENSE,
@@ -68,7 +68,7 @@ class MetasploitModule < Msf::Auxiliary
     })
 
     number_of_users = JSON.parse(res&.body)[0]['bookingpress_service_position'].to_i
-    fail_with(Failure::UnexpectedRelpy, 'Unable to extract the number of users from the database') unless number_of_users.is_a? Integer
+    fail_with(Failure::UnexpectedReply, 'Unable to extract the number of users from the database') unless number_of_users.is_a? Integer
 
     number_of_users
   end
