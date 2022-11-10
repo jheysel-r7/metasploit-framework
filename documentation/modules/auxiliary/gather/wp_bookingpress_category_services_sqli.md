@@ -110,12 +110,6 @@ The BookingPress plugin has to be in use on the WordPress site in order to explo
 1. Paste `[bookingpress_form]` on the new page and click `publish`.
 1. Navigate to `/bookingpress/` and you should see BookPress running with the Category / Service you created in step 1.
 
-## Options
-
-### BOOKING_PRESS_PAGE
-
-The webpage that BookingPress is running on. Example: `/bookingpress/`.
-
 ## Verification Steps
 
 1. Start msfconsole.
