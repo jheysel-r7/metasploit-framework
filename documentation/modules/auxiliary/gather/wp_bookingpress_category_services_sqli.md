@@ -1,12 +1,12 @@
 ## Vulnerable Application
 
-The BookingPress WordPress plugin before 1.0.11 fails to properly sanitize user supplied data 
-in the `total_service` parameter of the `bookingpress_front_get_category_services` AJAX action 
-(available to unauthenticated users), prior to using it in a dynamically constructed SQL query. 
-As a result, unauthenticated attackers can conduct an SQL injection attack to dump sensitive 
+The BookingPress WordPress plugin before 1.0.11 fails to properly sanitize user supplied data
+in the `total_service` parameter of the `bookingpress_front_get_category_services` AJAX action
+(available to unauthenticated users), prior to using it in a dynamically constructed SQL query.
+As a result, unauthenticated attackers can conduct an SQL injection attack to dump sensitive
 data from the backend database such as usernames and password hashes.
 
-This module uses this vulnerability to dump the list of WordPress users and their associated 
+This module uses this vulnerability to dump the list of WordPress users and their associated
 email addresses and password hashes for cracking offline.
 
 ### Setup
@@ -102,8 +102,9 @@ Click `Activate Plugin`
 
 The BookingPress plugin has to be in use on the WordPress site in order to exploit the vulnerability:
 
-1. Create a new "category" and associate it with a new "service" via the BookingPress admin menu
-   (`/wp-admin/admin.php?page=bookingpress_services`).
+1. Navigate to `/wp-admin/admin.php?page=bookingpress_services`
+1. Click `Manage Categories`, then click `+ Add New`, enter a `Category Name` and click `Save`
+1. Beside `Manage Servers` click `+ Add New`, enter a `Service Name`, enter the Category you just created in the `Category` dropdown, enter a `Price` and click `Save`
 1. Create a new page on the WordPress site that you've just set up by clicking `+ New` at the top of the screen and then
    select `Page` from the dropdown.
 1. Paste `[bookingpress_form]` on the new page and click `publish`.

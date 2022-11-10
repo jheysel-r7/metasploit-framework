@@ -39,7 +39,7 @@ class MetasploitModule < Msf::Auxiliary
     )
 
     register_options([
-      OptString.new('TARGETURI',[ true, 'The webpage that bookingPress is running on', '/bookingpress/' ])
+      OptString.new('TARGETURI', [ true, 'The webpage that bookingPress is running on', '/bookingpress/' ])
     ])
   end
 
